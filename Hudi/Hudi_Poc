@@ -1,0 +1,45 @@
+spark-shell \
+  --packages org.apache.hudi:hudi-spark-bundle_2.12:0.9.0,org.apache.spark:spark-avro_2.12:2.4.4 \
+  --conf 'spark.serializer=org.apache.spark.serializer.KryoSerializer' \
+  --conf 'spark.sql.extensions=org.apache.spark.sql.hudi.HoodieSparkSessionExtension'
+import org.apache.hudi.QuickstartUtils._
+import scala.collection.JavaConversions._
+import org.apache.spark.sql.SaveMode._
+import org.apache.hudi.DataSourceReadOptions._
+import org.apache.hudi.DataSourceWriteOptions._
+import org.apache.hudi.config.HoodieWriteConfig._
+
+spark.sql("create table if not exists stg_wmt_ww_fin_dl_tables.Hudi_Raj_TEST ( lgcy_vndr string, invce_dcmnt_crncy_amnt string, check_nmbr string,paid_doc_crrncy_amnt string,cntry_code string,sap_invce_nmbr int,eft_payee_name string,raw_cre_dt date ) using hudi options ( type = 'cow', primaryKey = 'lgcy_vndr' ) partitioned by (raw_cre_dt)")
+
+spark.sql("insert into stg_wmt_ww_fin_dl_tables.Hudi_Raj_TEST select lgcy_vndr,invce_dcmnt_crncy_amnt,check_nmbr,paid_doc_crrncy_amnt,cntry_code,sap_invce_nmbr,eft_payee_name,raw_cre_dt from stg_wmt_ww_fin_dl_tables.STG_US_FIN_AP_DSV_PYMT_HIST_SPARK_DP limit 10 ")
+
+spark.sql("insert into stg_wmt_ww_fin_dl_tables.Hudi_Raj_TEST select lgcy_vndr,invce_dcmnt_crncy_amnt,check_nmbr,paid_doc_crrncy_amnt,cntry_code,sap_invce_nmbr,eft_payee_name,raw_cre_dt from stg_wmt_ww_fin_dl_tables.STG_US_FIN_AP_DSV_PYMT_HIST_SPARK_DP where lgcy_vndr = '045720' and invce_dcmnt_crncy_amnt='4201.61-' ")
+
+spark.sql("merge into stg_wmt_ww_fin_dl_tables.Hudi_Raj_TEST using ( select lgcy_vndr,invce_dcmnt_crncy_amnt,check_nmbr,paid_doc_crrncy_amnt,cntry_code,sap_invce_nmbr,eft_payee_name,raw_cre_dt from stg_wmt_ww_fin_dl_tables.STG_US_FIN_AP_DSV_PYMT_HIST_SPARK_DP where lgcy_vndr = '045720'  ) source on Hudi_Raj_TEST.lgcy_vndr = source.lgcy_vndr when matched and sap_invce_nmbr =3080287291 then update set Hudi_Raj_TEST.invce_dcmnt_crncy_amnt = source.invce_dcmnt_crncy_amnt")
+
+merge into h0
+using (
+  select id, name, price, flag from s
+) source
+on h0.id = source.id
+when matched and flag != 'delete' then update set id = source.id, name = source.name, price = source.price * 2
+;
+Spark Submit command used : 
+spark-submit --jars gs://spark-lib/bigquery/spark-bigquery-with-dependencies_2.12-0.22.0.jar \
+--master yarn \
+--deploy-mode cluster \
+--num-executors 15 \
+--executor-cores 6 \
+--executor-memory 4g \
+--driver-memory=8g \
+--conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
+--conf spark.kryoserializer.buffer.max=512m \
+--class com.walmart.finance.WorkflowController /edge_data/code/svcfindatns/udp/jar/PROMO_LOAD_SPARK-3.431-SNAPSHOT.jar \
+workflow=PromoLoadWorkflow \
+runmode=global \
+Promo_Load_Property_file=gs://wmt-gec-dev-export-bucket/spark_property_file/Promo_load_properties_new.json
+
+
+Big query read command:
+val FIN_MP_SLR_ATTR_HIST=spark.read.format("bigquery").option("parentProject", "wmt-gec-dev").option("project", "wmt-gec-dev").option("temporaryGcsBucket", "e03591c9bf784351415834580ab26a0826e56598427bb184d14511a90794e7").option("viewsEnabled", true).option("viewMaterializationProject", "wmt-gec-dev").option("viewExpirationTimeInHours", 1).option("viewMaterializationDataset", "WW_GEC_BQ_VIEW").option("query", "select * from wmt-gec-dev.WW_GEC_STAGE_TABLES.STG_FIN_MP_SLR_CHRGBK").load()
+    FIN_MP_SLR_ATTR_HIST.write.format("orc").mode("overwrite").saveAsTable("stg_wmt_ww_fin_dl_tables.STG_FIN_MP_SLR_CHRGBK")
