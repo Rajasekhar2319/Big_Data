@@ -1,3 +1,6 @@
+Apache Hudi --> 0.9 version
+Apache Spark ---> 2.4.6 version
+
 spark-shell \
   --packages org.apache.hudi:hudi-spark-bundle_2.12:0.9.0,org.apache.spark:spark-avro_2.12:2.4.4 \
   --conf 'spark.serializer=org.apache.spark.serializer.KryoSerializer' \
@@ -24,6 +27,9 @@ using (
 on h0.id = source.id
 when matched and flag != 'delete' then update set id = source.id, name = source.name, price = source.price * 2
 ;
+
+######  Merge command does not work on non primary column
+
 Spark Submit command used : 
 spark-submit --jars gs://spark-lib/bigquery/spark-bigquery-with-dependencies_2.12-0.22.0.jar \
 --master yarn \
