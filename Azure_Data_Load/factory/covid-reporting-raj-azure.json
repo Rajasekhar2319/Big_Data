@@ -1,0 +1,9 @@
+{
+	"name": "covid-reporting-raj-azure",
+	"location": "eastus",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "a42726f8-f7ad-44fe-b438-5672da12280f",
+		"tenantId": "65e986b7-e774-4d75-8839-63e4e0fadceb"
+	}
+}

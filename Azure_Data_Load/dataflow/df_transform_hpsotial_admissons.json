@@ -1,0 +1,86 @@
+{
+	"name": "df_transform_hpsotial_admissons",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "ds_raw_hospial_admissions",
+						"type": "DatasetReference"
+					},
+					"name": "Hospialadmissions"
+				},
+				{
+					"dataset": {
+						"referenceName": "country_lookup",
+						"type": "DatasetReference"
+					},
+					"name": "countrysource"
+				},
+				{
+					"dataset": {
+						"referenceName": "ds_dim_date_lookup",
+						"type": "DatasetReference"
+					},
+					"name": "DimDateSource"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "ds_processed_hosptial_admission_weekly",
+						"type": "DatasetReference"
+					},
+					"name": "Weeklysink"
+				},
+				{
+					"dataset": {
+						"referenceName": "ds_processed_hosptial_admission_Daily",
+						"type": "DatasetReference"
+					},
+					"name": "sinkdaily"
+				}
+			],
+			"transformations": [
+				{
+					"name": "selectreqfields"
+				},
+				{
+					"name": "Lookupcountry"
+				},
+				{
+					"name": "Selectreqfieldslookup"
+				},
+				{
+					"name": "SplitDailyWeekly"
+				},
+				{
+					"name": "AggDimDate"
+				},
+				{
+					"name": "JoinwithDate"
+				},
+				{
+					"name": "PivotWeekly"
+				},
+				{
+					"name": "PivotDaily"
+				},
+				{
+					"name": "Sortwweekly"
+				},
+				{
+					"name": "SortDaily"
+				},
+				{
+					"name": "Selectreqfieldsweekly"
+				},
+				{
+					"name": "SelectDaily"
+				}
+			],
+			"script": "source(output(\n\t\tcountry as string,\n\t\tindicator as string,\n\t\tdate as date,\n\t\tyear_week as string,\n\t\tvalue as double,\n\t\tsource as string,\n\t\turl as string\n\t),\n\tallowSchemaDrift: true,\n\tvalidateSchema: false,\n\tignoreNoFilesFound: false) ~> Hospialadmissions\nsource(output(\n\t\tcountry as string,\n\t\tcountry_code_2_digit as string,\n\t\tcountry_code_3_digit as string,\n\t\tcontinent as string,\n\t\tpopulation as string\n\t),\n\tallowSchemaDrift: true,\n\tvalidateSchema: false,\n\tignoreNoFilesFound: false) ~> countrysource\nsource(output(\n\t\tdate_key as string,\n\t\tdate as string,\n\t\tyear as string,\n\t\tmonth as string,\n\t\tday as string,\n\t\tday_name as string,\n\t\tday_of_year as string,\n\t\tweek_of_month as string,\n\t\tweek_of_year as string,\n\t\tmonth_name as string,\n\t\tyear_month as string,\n\t\tyear_week as string\n\t),\n\tallowSchemaDrift: true,\n\tvalidateSchema: false,\n\tignoreNoFilesFound: false) ~> DimDateSource\nHospialadmissions select(mapColumn(\n\t\tcountry,\n\t\tindicator,\n\t\treported_date = date,\n\t\treported_year_week = year_week,\n\t\tvalue,\n\t\tsource\n\t),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> selectreqfields\nselectreqfields, countrysource lookup(selectreqfields@country == countrysource@country,\n\tmultiple: false,\n\tpickup: 'any',\n\tbroadcast: 'auto')~> Lookupcountry\nLookupcountry select(mapColumn(\n\t\tcountry = selectreqfields@country,\n\t\tindicator,\n\t\treported_date,\n\t\treported_year_week,\n\t\tvalue,\n\t\tsource,\n\t\tcountry_code_2_digit,\n\t\tcountry_code_3_digit,\n\t\tpopulation\n\t),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> Selectreqfieldslookup\nSelectreqfieldslookup split(indicator == 'Weekly new ICU admissions per 100k' || indicator == 'Weekly new hospital admissions per 100k',\n\tdisjoint: false) ~> SplitDailyWeekly@(Weekly, Daily)\nDimDateSource aggregate(groupBy(ecdc_year_week = year+'-W'+lpad(week_of_year,2,'0')),\n\tWeek_start_date = min(date),\n\t\tWeek_end_date = max(date)) ~> AggDimDate\nSplitDailyWeekly@Weekly, AggDimDate join(reported_year_week == ecdc_year_week,\n\tjoinType:'inner',\n\tbroadcast: 'auto')~> JoinwithDate\nJoinwithDate pivot(groupBy(country,\n\t\tcountry_code_2_digit,\n\t\tcountry_code_3_digit,\n\t\tpopulation,\n\t\treported_year_week,\n\t\tsource,\n\t\tWeek_start_date,\n\t\tWeek_end_date),\n\tpivotBy(indicator, ['Weekly new ICU admissions per 100k', 'Weekly new hospital admissions per 100k']),\n\tcount = sum(value),\n\tcolumnNaming: '$V_$N',\n\tlateral: true) ~> PivotWeekly\nSplitDailyWeekly@Daily pivot(groupBy(country,\n\t\tcountry_code_2_digit,\n\t\tcountry_code_3_digit,\n\t\tpopulation,\n\t\treported_date,\n\t\tsource),\n\tpivotBy(indicator, ['Daily hospital occupancy', 'Daily ICU occupancy']),\n\tcount = sum(value),\n\tcolumnNaming: '$V-$N',\n\tlateral: true) ~> PivotDaily\nPivotWeekly sort(desc(reported_year_week, true),\n\tasc(country, true),\n\tpartitionBy('hash', 1)) ~> Sortwweekly\nPivotDaily sort(desc(reported_date, true),\n\tasc(country, true),\n\tpartitionBy('hash', 1)) ~> SortDaily\nSortwweekly select(mapColumn(\n\t\tcountry,\n\t\tcountry_code_2_digit,\n\t\tcountry_code_3_digit,\n\t\tpopulation,\n\t\treported_year_week,\n\t\tsource,\n\t\tReported_Week_start_date = Week_start_date,\n\t\tReported_Week_end_date = Week_end_date,\n\t\tNew_ICU_Count = {Weekly new ICU admissions per 100k_count},\n\t\tNew_Occupancy_Count = {Weekly new hospital admissions per 100k_count}\n\t),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> Selectreqfieldsweekly\nSortDaily select(mapColumn(\n\t\tcountry,\n\t\tcountry_code_2_digit,\n\t\tcountry_code_3_digit,\n\t\tpopulation,\n\t\treported_date,\n\t\tsource,\n\t\thospital_occupancy_count = {Daily hospital occupancy-count},\n\t\tICU_occupancy_count = {Daily ICU occupancy-count}\n\t),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> SelectDaily\nSelectreqfieldsweekly sink(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tpartitionFileNames:['Hosptial_admissions_weekly.csv'],\n\ttruncate: true,\n\tumask: 0022,\n\tpreCommands: [],\n\tpostCommands: [],\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true,\n\tpartitionBy('hash', 1)) ~> Weeklysink\nSelectDaily sink(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tpartitionFileNames:['Hosptial_admissions_Daily.csv'],\n\ttruncate: true,\n\tumask: 0022,\n\tpreCommands: [],\n\tpostCommands: [],\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true,\n\tpartitionBy('hash', 1)) ~> sinkdaily"
+		}
+	}
+}
