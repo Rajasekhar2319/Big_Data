@@ -1,0 +1,89 @@
+package com.walmart.finance.workflows.components.extractors
+
+import com.walmart.archetype.core.utils.LibraryEnum
+import com.walmart.archetype.core.utils.LibraryEnum.LibraryEnum
+import com.walmart.archetype.core.workflows.components.extractors.ExtractorTrait
+import com.walmart.dataplatform.common.audit.model.AuditContext
+import com.walmart.finance.utils.{SparkIOUtil, StringConstantsUtil, QueryConstants => QC}
+import org.apache.spark.sql.{DataFrame, SaveMode}
+import org.apache.spark.sql.types._
+import org.apache.log4j.Logger
+import org.slf4j.{Logger, LoggerFactory}
+
+
+import scala.collection.mutable.ListBuffer
+import com.walmart.finance.utils.CommonFunctions
+import java.text.SimpleDateFormat
+
+import org.apache.spark.sql.functions.column
+
+class PromoLoadExtractor extends ExtractorTrait {
+
+  val logger = LoggerFactory.getLogger(this.getClass.getName)
+  System.setProperty("hadoop.home.dir", "C://winutils//")
+
+  override def extract(paramsMap: Map[String, Any],
+                       extractedDF: Option[Map[String, DataFrame]],
+                       libraryObjects: Option[Map[LibraryEnum, Any]]): Option[Map[String, DataFrame]] = {
+    var startts: String = "2020-05-01 00:00:00"
+    var endts:String="2021-08-25 00:00:00"
+    logger.info("Audit FrameWork started: " + paramsMap.get("enableservices").getOrElse())
+
+    /* if (paramsMap.get("enableservices").getOrElse() == "AUDIT") {
+       val Interval = libraryObjects.get(LibraryEnum.Audit).asInstanceOf[AuditContext].getCurrentJobTimestamps
+       val timeFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+       startts = timeFormat.format(Interval.getStart())
+       endts = timeFormat.format(Interval.getEnd())
+     }
+     else
+     {
+       startts = paramsMap.get("startts").get.toString
+       endts = paramsMap.get("endts").get.toString
+     }
+     */
+
+    val spark = SparkIOUtil.getSparkSession;
+    import spark.implicits._
+    logger.info("Promo load Extractor Starts")
+    logger.info("Start date from extractor is " + startts)
+    logger.info("End date from extractor is " + endts)
+    spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+
+    val inPath = paramsMap.get("Promo_Load_Property_file").get
+
+    val jsonRsDs = spark.read.option("multiLine", true).json(inPath.toString)
+    var argsLst = CommonFunctions.getArgs(jsonRsDs)
+    jsonRsDs.show(false)
+
+    val stg_promo_award_dtl = spark.sql(sqlText = argsLst(0).replace("$Start_Date",startts).replace("$End_Date",endts))
+    stg_promo_award_dtl.write.format("orc").mode("overwrite").insertInto(argsLst(1))
+
+    logger.info("Creating Hudi table")
+
+    spark.sql("CREATE TABLE IF NOT EXISTS stg_wmt_ww_fin_dl_tables.stg_non_part_fin_mbrshp_HUDI_TGT_TEST_IJ ( data_src_cd string, trans_id string, mbrshp_id string, vertical_nm string, event_dt date, bill_start_dt date, bill_end_dt date, bill_card_type_nm string, pymt_instr_hash_val string, mbrshp_fee_amt decimal(18,7), tax_amt decimal(18,7), tax_cd string, tot_amt decimal(18,7), pymt_hndl_id string, auth_id string, auth_type_cd string, auth_amt decimal(18,7), auth_dt date, capture_id string, capture_type_cd string, capture_amt decimal(18,7), capture_dt date, rfnd_id string, rfnd_type_cd string, rfnd_amt decimal(18,7), rfnd_dt date, rfnd_rsn_txt string, geo_region_cd string,  create_user string, upd_user string,  geo_tax_codes string, tax_id string, itemid string, mbrshp_tax_amt decimal(18,2), rfnd_tax_amt decimal(18,2), mbrshp_rfnd_tax_amt decimal(18,2), mbrshp_type string, tndr_plan_id string, raw_cre_dt string, op_cmpny_cd string) using hudi options ( type = 'cow', primaryKey = 'trans_id' ) partitioned by (raw_cre_dt,op_cmpny_cd)")
+
+    logger.info(" Hudi table creation done")
+
+    spark.sql("insert into  stg_wmt_ww_fin_dl_tables.stg_non_part_fin_mbrshp_HUDI_TGT_TEST_IJ  select  data_src_cd , trans_id , mbrshp_id , vertical_nm , event_dt , bill_start_dt , bill_end_dt , bill_card_type_nm , pymt_instr_hash_val , mbrshp_fee_amt , tax_amt , tax_cd , tot_amt , pymt_hndl_id , auth_id , auth_type_cd , auth_amt , auth_dt , capture_id , capture_type_cd , capture_amt , capture_dt , rfnd_id , rfnd_type_cd , rfnd_amt , rfnd_dt , rfnd_rsn_txt , geo_region_cd , create_user , upd_user , geo_tax_codes , tax_id , itemid , mbrshp_tax_amt , rfnd_tax_amt , mbrshp_rfnd_tax_amt , mbrshp_type , tndr_plan_id, raw_cre_dt , op_cmpny_cd  from stg_wmt_ww_fin_dl_tables.stg_non_part_fin_mbrshp_RAJ ");
+
+    logger.info("Data insertion completed")
+    logger.info("Data insertion completed")
+
+    spark.sql("merge into stg_wmt_ww_fin_dl_tables.stg_non_part_fin_mbrshp_HUDI_TGT_TEST_IJ  X using ( select data_src_cd, trans_id , mbrshp_id , vertical_nm, event_dt , bill_start_dt , bill_end_dt , bill_card_type_nm , pymt_instr_hash_val , mbrshp_fee_amt , tax_amt , tax_cd , tot_amt , pymt_hndl_id , auth_id , auth_type_cd , auth_amt , auth_dt , capture_id , capture_type_cd , capture_amt , capture_dt , rfnd_id , rfnd_type_cd , rfnd_amt , rfnd_dt , rfnd_rsn_txt , geo_region_cd , create_user , upd_user , geo_tax_codes , tax_id , itemid , mbrshp_tax_amt , rfnd_tax_amt , mbrshp_rfnd_tax_amt , mbrshp_type , tndr_plan_id , raw_cre_dt , op_cmpny_cd FROM stg_wmt_ww_fin_dl_tables.STG_GEC_FIN_MEMBERSHIP_PLUS_TAX_Test_RAJ  ) source on X.trans_id = source.trans_id WHEN MATCHED THEN update set * when NOT matched then INSERT * ")
+
+    //Some(Map(StringConstantsUtil.stg_promo_award_dtl -> stg_promo_award_dtl  ))
+    Some(Map())
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+spark-submit --jars /edge_data/code/svcfindatns/udp/jar/org.apache.avro_avro-1.8.2.jar,/edge_data/code/svcfindatns/udp/jar/spark-avro_2.12-2.4.0.jar,gs://spark-lib/bigquery/spark-bigquery-with-dependencies_2.12-0.22.0.jar,/edge_data/code/svcfindatns/udp/jar/hive-hcatalog-core-3.1.0.jar --master yarn --deploy-mode cluster --num-executors 15 --executor-cores 6 --executor-memory 4g --driver-memory=8g --packages org.apache.hudi:hudi-spark-bundle_2.12:0.9.0,org.apache.spark:spark-avro_2.12:2.4.4 --conf 'spark.sql.extensions=org.apache.spark.sql.hudi.HoodieSparkSessionExtension' --conf 'spark.serializer=org.apache.spark.serializer.KryoSerializer' --conf spark.kryoserializer.buffer.max=512m --conf spark.driver.extraClassPath=org.apache.avro_avro-1.8.2.jar:spark-avro_2.12:2.4.4.jar --conf spark.executor.extraClassPath=org.apache.avro_avro-1.8.2.jar:spark-avro_2.12:2.4.4.jar:hudi-spark-bundle_2.12-0.9.0.jar --class com.walmart.finance.WorkflowController /edge_data/code/svcfindatns/udp/jar/PROMO_LOAD_SPARK-3.63-SNAPSHOT.jar workflow=PromoLoadWorkflow runmode=global Promo_Load_Property_file=gs://wmt-gec-dev-export-bucket/spark_property_file/Promo_load_properties_new.json tableName=stg_wmt_ww_fin_dl_tables.stg_promo_award_dtl_spark_hudi_test1 tablePath=gs://e03591c9bf784351415834580ab26a0826e56598427bb184d14511a90794e7/stg_wmt_ww_fin_dl_tables.db/stg_promo_award_dtl_spark_HUDI_test1
