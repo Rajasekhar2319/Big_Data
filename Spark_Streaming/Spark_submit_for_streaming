@@ -1,0 +1,42 @@
+Kafka SOX:
+
+spark-submit  \
+--master yarn \
+--deploy-mode cluster \
+--num-executors 15 \
+--executor-cores 6 \
+--executor-memory 4g \
+--driver-memory=8g \  
+--packages org.apache.spark:spark-sql-kafka-0-10_2.12:2.4.8 \
+--files /edge_data/code/svcfindatns/udp/connection_yaml/truststore.jks,/edge_data/code/svcfindatns/udp/connection_yaml/keystore.jks \
+--class com.walmart.ecomm.Kafka_streaming_SOX /edge_data/code/svcfindatns/udp/jar/Spark_Streaming-3.148-SNAPSHOT.jar
+
+gcloud dataproc jobs submit spark \
+--cluster='settlement-cluster' \
+--region=us-east4 \
+--class=com.walmart.ecomm.Kafka_streaming_SOX \
+--files=/edge_data/code/svcfindatns/udp/connection_yaml/truststore.jks,/edge_data/code/svcfindatns/udp/connection_yaml/keystore.jks \
+--jars=gs://spark-lib/bigquery/spark-bigquery-with-dependencies_2.12-0.22.2.jar,/edge_data/code/svcfindatns/udp/jar/Spark_Streaming-3.148-SNAPSHOT.jar
+
+
+
+Kafka :
+
+ spark-submit  \
+--master yarn \
+--deploy-mode cluster \
+--num-executors 15 \
+--executor-cores 6 \
+--executor-memory 4g \
+--driver-memory=8g \
+--packages org.apache.spark:spark-sql-kafka-0-10_2.12:2.4.8 \
+--class com.walmart.ecomm.Kafka_Streaming /edge_data/code/svcfindatns/udp/jar/Spark_Streaming-3.148-SNAPSHOT.jar
+
+
+Normal Streaming:
+
+  spark-submit \
+  --deploy-mode cluster \
+  --master yarn \
+  --class com.walmart.ecomm.Spark_Streaming \
+  /edge_data/code/svcfindatns/udp/jar/Spark_Streaming-3.148-SNAPSHOT.jar
